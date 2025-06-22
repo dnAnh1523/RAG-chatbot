@@ -1,0 +1,30 @@
+{"question": "Giá trị cốt lõi của Trường Đại học Công nghệ Thông tin & Truyền thông là gì?", "type": "rag"}
+{"question": "Triết lý giáo dục của Trường Đại học Công nghệ Thông tin & Truyền thông được thể hiện như thế nào?", "type": "rag"}
+{"question": "Địa chỉ và thông tin liên hệ chính thức của Trường Đại học Công nghệ Thông tin & Truyền thông?", "type": "rag"}
+{"question": "Ai đang giữ chức vụ Giám đốc Trung tâm Truyền thông, Tuyển sinh và Hỗ trợ sinh viên?", "type": "rag"}
+{"question": "Tôi có thể liên hệ Hội Sinh viên Trường bằng cách nào?", "type": "rag"}
+{"question": "Quy định về công tác người học tại Trường Đại học Công nghệ Thông tin và Truyền thông được ban hành kèm theo quyết định nào?", "type": "rag"}
+{"question": "Mục đích chính của công tác người học tại Trường là gì?", "type": "rag"}
+{"question": "Nhiệm kỳ của Ban cán sự lớp quản lý hành chính kéo dài bao lâu?", "type": "rag"}
+{"question": "Ban cán sự lớp quản lý hành chính có những quyền lợi gì?", "type": "rag"}
+{"question": "Nếu sinh viên không chấp hành các quy chế, quy định của Bộ Giáo dục và Đào tạo, Đại học Thái Nguyên hoặc của Trường, hình thức xử lý kỷ luật tối đa có thể là gì?", "type": "rag"}
+{"question": "Nếu sinh viên không thực hiện nghĩa vụ về tài chính hoặc bảo hiểm y tế theo quy định hiện hành, họ có thể bị xử lý kỷ luật không?", "type": "rag"}
+{"question": "Vi phạm nào liên quan đến học tập có thể dẫn đến việc sinh viên bị buộc thôi học ngay lần đầu tiên theo phụ lục khung xử lý kỷ luật?", "type": "rag"}
+{"question": "Nếu sinh viên vi phạm quy chế thi, kiểm tra và bị xử lý ở mức 1 (Khiển trách hoặc Cảnh cáo), họ sẽ bị xử lý kỷ luật như thế nào?", "type": "rag"}
+{"question": "Kết quả rèn luyện của sinh viên được đánh giá bằng thang điểm tối đa là bao nhiêu?", "type": "rag"}
+{"question": "Đối với sinh viên hệ đại học chính quy (trừ sinh viên năm cuối), làm thế nào để đạt điểm tối đa (12 điểm) cho mục \"Kết quả TBC học tập\" trong phần đánh giá ý thức tham gia học tập?", "type": "rag"}
+{"question": "Theo quy định, kết quả rèn luyện loại Khá tương ứng với khoảng điểm nào?", "type": "rag"}
+{"question": "Nếu sinh viên bị kỷ luật mức cảnh cáo, kết quả rèn luyện khi đánh giá sẽ không được vượt quá loại nào?", "type": "rag"}
+{"question": "Kết quả đánh giá rèn luyện toàn khóa học của sinh viên được sử dụng vào những mục đích gì khi tốt nghiệp?", "type": "rag"}
+{"question": "Nếu sinh viên bị xếp loại rèn luyện yếu, kém trong hai học kỳ liên tiếp, họ sẽ bị xử lý như thế nào?", "type": "rag"}
+{"question": "Hoạt động ngoại khóa (HĐNK) được định nghĩa như thế nào trong Quy định tổ chức, đánh giá hoạt động ngoại khóa?", "type": "rag"}
+{"question": "Minh chứng nào được sử dụng để đánh giá việc tham gia các hoạt động ngoại khóa của sinh viên?", "type": "rag"}
+{"question": "Nghị định số 81/2021/NĐ CP của Thủ tướng Chính phủ quy định về những nội dung gì liên quan đến cơ sở giáo dục?", "type": "rag"}
+{"question": "Theo Nghị định 81/2021/NĐ-CP, những đối tượng nào không phải đóng học phí?", "type": "rag"}
+{"question": "Trường Đại học Công nghệ Thông tin & Truyền thông thực hiện những loại học bổng nào đối với sinh viên đại học chính quy?", "type": "rag"}
+{"question": "Học bổng khuyến khích học tập được xét và cấp theo thời gian nào?", "type": "rag"}
+{"question": "Chào bạn, bạn có thể cho tôi biết kết quả rèn luyện của sinh viên được đánh giá dựa trên thang điểm nào không?", "type": "conversation"}
+{"question": "Vậy để được xếp loại rèn luyện Khá thì cần đạt bao nhiêu điểm?", "type": "conversation"}
+{"question": "Nếu tôi không may bị kỷ luật mức cảnh cáo thì kết quả rèn luyện của tôi sẽ bị ảnh hưởng như thế nào?", "type": "conversation"}
+{"question": "Thế còn nếu kết quả rèn luyện bị xếp loại yếu hoặc kém trong nhiều kỳ liên tiếp thì sao?", "type": "conversation"}
+{"question": "Cuối cùng, kết quả rèn luyện toàn khóa học này có ý nghĩa gì khi tôi tốt nghiệp?", "type": "conversation"}

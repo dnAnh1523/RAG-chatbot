@@ -1,0 +1,66 @@
+[
+  {
+    "role": "user",
+    "content": "Giá trị cốt lõi của Trường Đại học Công nghệ Thông tin & Truyền thông là gì?"
+  },
+  {
+    "role": "assistant",
+    "content": "Giá trị cốt lõi của Trường Đại học Công nghệ Thông tin & Truyền thông là:\n\n- Đoàn kết\n- Tận tâm\n- Sáng tạo\n- Thực tiễn."
+  },
+  {
+    "role": "user",
+    "content": "Triết lý giáo dục của Trường Đại học Công nghệ Thông tin & Truyền thông được thể hiện như thế nào?"
+  },
+  {
+    "role": "assistant",
+    "content": "Triết lý giáo dục của Trường Đại học Công nghệ Thông tin & Truyền thông được thể hiện như sau:\n\n\"Giáo dục toàn diện lấy người học làm trung tâm; đào tạo hình mẫu công dân số, kiến tạo tương lai, nuôi dưỡng lòng nhân ái.\"\n\nĐiều này cho thấy rằng triết lý giáo dục của trường tập trung vào việc phát triển con người toàn diện và xây dựng một xã hội tốt đẹp hơn."
+  },
+  {
+    "role": "user",
+    "content": "Địa chỉ và thông tin liên hệ chính thức của Trường Đại học Công nghệ Thông tin & Truyền thông?"
+  },
+  {
+    "role": "assistant",
+    "content": "Địa chỉ và thông tin liên hệ chính thức của Trường Đại học Công nghệ Thông tin & Truyền thông là:\n\n- Địa chỉ: Xã Quyết Thắng, thành phố Thái Nguyên\n- Điện thoại: 0208.3846254\n- Fax: 0208.3846237\n- Email: contact@ictu.edu.vn\n- Website: www.ictu.edu.vn"
+  },
+  {
+    "role": "user",
+    "content": "Ai đang giữ chức vụ Giám đốc Trung tâm Truyền thông, Tuyển sinh và Hỗ trợ sinh viên?"
+  },
+  {
+    "role": "assistant",
+    "content": "Theo thông tin được cung cấp, TS. Đỗ Đình Cường đang giữ chức vụ Giám đốc Trung tâm Truyền thông, Tuyển sinh và Hỗ trợ sinh viên"
+  },
+  {
+    "role": "user",
+    "content": "Tôi có thể liên hệ Hội Sinh viên Trường bằng cách nào?"
+  },
+  {
+    "role": "assistant",
+    "content": "Bạn có thể liên hệ Hội Sinh viên Trường Đại học Công nghệ Thông tin & Truyền thông - Đại học Thái Nguyên bằng cách gửi email đến địa chỉ: hoisinhvien@ictu.edu.vn"
+  },
+  {
+    "role": "user",
+    "content": "Quy định về công tác người học tại Trường Đại học Công nghệ Thông tin và Truyền thông được ban hành kèm theo quyết định nào?"
+  },
+  {
+    "role": "assistant",
+    "content": "Quy định về công tác người học tại Trường Đại học Công nghệ Thông tin và Truyền thông được ban hành kèm theo Quyết định số 256/QĐ-ĐHCNTT&TT ngày 14 tháng 4 năm 2023 của Hiệu trưởng Trường Đại học Công nghệ Thông tin và Truyền thông."
+  },
+  {
+    "role": "user",
+    "content": "Mục đích chính của công tác người học tại Trường là gì?"
+  },
+  {
+    "role": "assistant",
+    "content": "Mục đích chính của công tác người học tại Trường Đại học Công nghệ Thông tin và Truyền thông là hỗ trợ, hướng dẫn và quản lý các hoạt động học tập và rèn luyện của sinh viên để đảm bảo hiệu quả trong quá trình đào tạo."
+  },
+  {
+    "role": "user",
+    "content": "Nhiệm kỳ của Ban cán sự lớp quản lý hành chính kéo dài bao lâu?"
+  },
+  {
+    "role": "assistant",
+    "content": "Theo Điều 15 của Quy định về công tác người học tại Trường Đại học Công nghệ Thông tin và Truyền thông, nhiệm kỳ Ban cán sự lớp quản lý hành chính thực hiện theo năm học."
+  }
+]
