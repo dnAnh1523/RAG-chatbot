@@ -1,7 +1,10 @@
 import json
 import time
 import os
+import torch  # Thêm thư viện để check GPU
 from typing import List, Dict, Any
+from operator import itemgetter
+
 from langchain.text_splitter import RecursiveCharacterTextSplitter, CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -12,26 +15,23 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain, create_history_aware_retriever
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.messages import trim_messages
+from langchain_core.messages import trim_messages, HumanMessage, AIMessage
 from langchain_core.runnables import RunnablePassthrough
 
-# Load JSON data
+# --- 1. DATA LOADING FUNCTIONS (Giữ nguyên) ---
+
 def load_json_data(json_path: str) -> List[Document]:
-    """Load JSON chứa các đoạn văn bản + metadata, chuyển thành list Document.
-    Tích hợp heading_path vào content không hiển thị tags [HEADING] và [CONTENT].
-    """
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     documents = []
     for item in data:
-        content = item['content']  # Văn bản chính
-        metadata = item['metadata']  # Metadata bổ sung
-        metadata['id'] = item['id']  # Gắn ID vào metadata
+        content = item['content']
+        metadata = item['metadata']
+        metadata['id'] = item['id']
         
-        # Tích hợp heading_path mà không hiển thị tags
         if metadata.get('content_type') == 'paragraph':
-            heading = " > ".join(metadata['heading_path'][-2:])  # Lấy 2 cấp tiêu đề cuối
+            heading = " > ".join(metadata['heading_path'][-2:])
             page_content = f"{heading}\n{content}"
         else:
             page_content = content
@@ -40,8 +40,6 @@ def load_json_data(json_path: str) -> List[Document]:
     
     return documents
 
-
-# Split documents
 def split_documents(documents: List[Document]) -> List[Document]:
     MAX_CHAR_LENGTH_DIEU = 2900
     MAX_CHAR_LENGTH_PARA = 1200
@@ -85,11 +83,16 @@ def split_documents(documents: List[Document]) -> List[Document]:
 
     return split_dieu + split_para + split_other
 
-# Create vector retriever
+# --- 2. RETRIEVER & LLM SETUP (Đã tối ưu GPU) ---
+
 def create_vector_retriever(documents: List[Document], model_name: str, k: int = 5, cache_dir: str = None) -> FAISS:
+    # Tự động chọn thiết bị (GPU nếu có)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"Initializing Embeddings on device: {device}")
+
     embeddings = HuggingFaceEmbeddings(
         model_name=model_name,
-        model_kwargs={'device': 'cpu', 'trust_remote_code': True},
+        model_kwargs={'device': device, 'trust_remote_code': True},
         encode_kwargs={'normalize_embeddings': True}
     )
 
@@ -104,6 +107,7 @@ def create_vector_retriever(documents: List[Document], model_name: str, k: int =
         except:
             pass
 
+    # Xử lý documents an toàn (giữ nguyên logic cũ của bạn)
     try:
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
@@ -117,8 +121,7 @@ def create_vector_retriever(documents: List[Document], model_name: str, k: int =
     safe_documents = []
     for doc in documents:
         content = doc.page_content
-        if not isinstance(content, str):
-            continue
+        if not isinstance(content, str): continue
         if has_tokenizer:
             try:
                 tokens = tokenizer.encode(content)
@@ -134,9 +137,9 @@ def create_vector_retriever(documents: List[Document], model_name: str, k: int =
             safe_documents.append(doc if len(content) <= 30000 else Document(page_content=content[:30000], metadata=doc.metadata))
 
     clean_docs = [doc for doc in safe_documents if isinstance(doc.page_content, str) and doc.page_content.strip()]
-    if not clean_docs:
-        return None
+    if not clean_docs: return None
 
+    # Tạo vectorstore theo batch
     batch_size = 50
     vectorstore = FAISS.from_documents(clean_docs[:batch_size], embeddings)
     for i in range(batch_size, len(clean_docs), batch_size):
@@ -144,11 +147,7 @@ def create_vector_retriever(documents: List[Document], model_name: str, k: int =
         try:
             vectorstore.add_documents(batch)
         except:
-            for doc in batch:
-                try:
-                    vectorstore.add_documents([doc])
-                except:
-                    continue
+            continue
 
     if cache_dir:
         os.makedirs(cache_dir, exist_ok=True)
@@ -159,16 +158,17 @@ def create_vector_retriever(documents: List[Document], model_name: str, k: int =
 
     return vectorstore.as_retriever(search_kwargs={"k": k})
 
-
-# Load LLM
 def load_llm(model_path: str) -> ChatLlamaCpp:
-    """Load a local LLM using ChatLlamaCpp"""
+    """Load LLM with optimized settings"""
+    # Tự động tính số threads tối ưu
+    n_threads = os.cpu_count() - 2 if os.cpu_count() > 2 else 1
+    
     llm = ChatLlamaCpp(
         model_path=model_path,
         n_ctx=4096,
         temperature=0.3,
         max_tokens=2048,
-        n_batch=256,
+        n_batch=512, # Tăng batch size để xử lý nhanh hơn
         top_p=0.9,
         top_k=40,
         repeat_penalty=1.3,
@@ -177,124 +177,73 @@ def load_llm(model_path: str) -> ChatLlamaCpp:
         use_mlock=True,
         use_mmap=True,
         f16_kv=True,
-        n_threads= os.cpu_count() or 4
+        n_threads=n_threads,
+        n_gpu_layers=-1 if torch.cuda.is_available() else 0 # Đẩy full layers lên GPU nếu có
     )
     return llm
+
+# --- 3. CHAINS SETUP (Fix Trimmer & Variable Mismatch) ---
 
 contextualize_q_system_prompt = (
     "Dựa trên lịch sử hội thoại và câu hỏi mới nhất của người dùng, "
     "nếu câu hỏi có tham chiếu đến ngữ cảnh trong lịch sử, "
-    "hãy tạo một câu hỏi độc lập, đầy đủ ý nghĩa mà không cần tham chiếu lịch sử. "
-    "Không trả lời câu hỏi, chỉ tái định dạng nếu cần, nếu không thì giữ nguyên."
+    "hãy viết lại thành một câu hỏi độc lập, đầy đủ ý nghĩa. "
+    "Không trả lời câu hỏi, chỉ tái định dạng câu hỏi."
 )
-contextualize_q_prompt = ChatPromptTemplate.from_messages([
-    ("system", contextualize_q_system_prompt),
-    MessagesPlaceholder("chat_history"),
-    ("human", "{input}"),
-])
 
-# Create QA Chain with history management
-def create_qa_chain(retriever, llm) -> RunnableWithMessageHistory:
+def create_qa_chain(retriever, llm, history_store) -> RunnableWithMessageHistory:
+    # 1. Prompt Rephrase: Sử dụng 'trimmed_history'
+    rephrase_prompt = ChatPromptTemplate.from_messages([
+        ("system", contextualize_q_system_prompt),
+        MessagesPlaceholder("trimmed_history"), # Quan trọng: Dùng biến đã trim
+        ("human", "{input}"),
+    ])
+    
     history_aware_retriever = create_history_aware_retriever(
-        llm, retriever, contextualize_q_prompt
+        llm, retriever, rephrase_prompt
     )
     
-    doc_prompt = ChatPromptTemplate.from_messages([
-        ("system", """Bạn là chuyên gia tư vấn học tập cho sinh viên đại học.
+    # 2. Prompt Trả lời RAG: Sử dụng 'trimmed_history'
+    qa_prompt = ChatPromptTemplate.from_messages([
+        ("system", """Bạn là trợ lý ảo hỗ trợ sinh viên dựa trên tài liệu được cung cấp.
         Dựa vào thông tin sau: {context}
-        Trả lời câu hỏi ngắn gọn và chính xác. Nếu không tìm thấy thông tin, nói: 
-        "Tôi không tìm thấy thông tin về vấn đề này trong cơ sở dữ liệu." """),
-        MessagesPlaceholder(variable_name="chat_history"),
+        Trả lời câu hỏi ngắn gọn, chính xác và thân thiện.
+        Nếu không tìm thấy thông tin trong ngữ cảnh, hãy nói: "Xin lỗi, tài liệu hiện tại không có thông tin về vấn đề này." """),
+        MessagesPlaceholder("trimmed_history"), # Quan trọng: Dùng biến đã trim
         ("human", "{input}")
     ])
     
-    document_chain = create_stuff_documents_chain(llm, doc_prompt)
-    retrieval_chain = create_retrieval_chain(history_aware_retriever, document_chain)
+    question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+    rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
     
+    # 3. Cấu hình Trimmer: Giữ lại khoảng 4-5 cặp câu hỏi gần nhất
     trimmer = trim_messages(
-        max_tokens=1000,
+        max_tokens=1500, # Đủ cho khoảng 4-5 vòng hội thoại + context
         strategy="last",
         token_counter=llm,
         include_system=True,
         allow_partial=False
     )
     
-    trim_history = RunnablePassthrough.assign(history=trimmer)
-    chain_with_trimming = trim_history | retrieval_chain
+    # 4. Pipeline xử lý: Lấy History gốc -> Trim -> Chạy RAG
+    chain_with_trimming = (
+        RunnablePassthrough.assign(trimmed_history=itemgetter("chat_history") | trimmer)
+        | rag_chain
+    )
     
-    history = ChatMessageHistory()
-    conversational_chain = RunnableWithMessageHistory(
+    # 5. Kết nối với History Store bên ngoài
+    return RunnableWithMessageHistory(
         runnable=chain_with_trimming,
-        get_session_history=lambda session_id: history,
+        get_session_history=lambda session_id: history_store[session_id],
         input_messages_key="input",
-        history_messages_key="chat_history",
+        history_messages_key="chat_history", # Key gốc trong store
         output_messages_key="answer"
     )
-    
-    return conversational_chain
 
-def create_academic_support_chain(llm) -> RunnableWithMessageHistory:
-    """Create chain for academic support with contextualized question"""
-    contextualize_chain = contextualize_q_prompt | llm
-    
-    academic_prompt = ChatPromptTemplate.from_messages([
-    ("system", """Bạn là một chuyên gia tư vấn học tập cho sinh viên đại học, hỗ trợ về học thuật, kỹ năng học, và định hướng nghề nghiệp. Trả lời ngắn gọn, khích lệ, thân thiện, và sử dụng Chain of Thought (CoT) đơn giản để suy nghĩ từng bước, đảm bảo câu trả lời rõ ràng, logic.
-
-    **Hướng dẫn chung**:
-    1. **Dựa vào ngữ cảnh**: Xem lịch sử hội thoại để hiểu câu hỏi và trả lời phù hợp.
-    2. **Áp dụng CoT đơn giản**:
-    - Bước 1: Xác định loại câu hỏi (học thuật, kỹ năng học, định hướng nghề nghiệp, hay đối thoại thông thường).
-    - Bước 2: Kiểm tra thông tin từ lịch sử hội thoại hoặc kiến thức chung để trả lời.
-    - Bước 3: Đưa ra câu trả lời ngắn gọn, cụ thể, kèm lời động viên.
-    3. **Trường hợp đặc biệt**:
-    - Nếu không đủ thông tin: Nói: "Mình cần thêm chi tiết để trả lời tốt hơn. Bạn có thể nói rõ hơn không? Mình sẽ giúp ngay!"
-    - Nếu câu hỏi mơ hồ: Hỏi lại để làm rõ (VD: "Bạn muốn hỏi về môn học cụ thể hay kỹ năng học chung?").
-    - Nếu câu hỏi về xu hướng nghề nghiệp: Chỉ đưa ra gợi ý chung dựa trên kiến thức phổ biến và khuyến khích người dùng cung cấp thêm thông tin.
-
-    **Xử lý phản hồi từ người dùng**:
-    - **Nhận xét tích cực**: Cảm ơn và mời hỏi thêm (VD: "Cảm ơn bạn! Có gì cần hỗ trợ nữa không?").
-    - **Nhận xét trung tính**: Xác nhận và khuyến khích tiếp tục (VD: "OK, bạn muốn tìm hiểu gì nữa?").
-    - **Nhận xét tiêu cực**: Xin lỗi và đề nghị làm rõ (VD: "Mình xin lỗi nếu chưa rõ, bạn muốn mình giải thích thêm gì?").
-
-    **Xử lý các loại câu hỏi**:
-    - **Học thuật**: Đưa ra mẹo cụ thể (VD: cách ghi chú, lập kế hoạch học) và động viên.
-    - **Kỹ năng học**: Gợi ý phương pháp đơn giản (VD: Pomodoro, tóm tắt ý chính) và khuyến khích thử.
-    - **Định hướng nghề nghiệp**: Đưa ra bước hành động chung (VD: tìm hiểu ngành, làm CV) và động viên.
-    - **Chào hỏi/đối thoại**: Trả lời thân thiện, mời hỏi thêm (VD: "Xin chào! Bạn cần giúp gì hôm nay?").
-
-    **Ví dụ**:
-    - Câu hỏi: "Làm sao để học tốt môn Toán?"
-    - Bước 1: Câu hỏi học thuật về môn Toán.
-    - Bước 2: Dựa trên kiến thức chung, gợi ý phương pháp học.
-    - Bước 3: Trả lời: "Học Toán tốt, bạn thử làm bài tập từ dễ đến khó và ôn công thức mỗi ngày. Dành 20-30 phút luyện tập là tiến bộ ngay! Bạn đã thử cách nào chưa?"
-    - Câu hỏi: "Ngành CNTT có triển vọng không?"
-    - Bước 1: Câu hỏi định hướng nghề nghiệp.
-    - Bước 2: Dựa trên kiến thức chung, CNTT thường có triển vọng.
-    - Bước 3: Trả lời: "CNTT là ngành rất tiềm năng, đặc biệt ở lập trình và AI. Bạn có thể bắt đầu học kỹ năng cơ bản như code. Bạn muốn tìm hiểu thêm về lĩnh vực nào? Cố lên nhé!"
-
-    Hãy giữ câu trả lời tích cực, thực tế, và khuyến khích người dùng tiến bộ!"""),
-    MessagesPlaceholder(variable_name="chat_history"),
-    ("human", "{input}")
-])
-    
-    answer_chain = academic_prompt | llm
-    
-    full_chain = (
-        RunnablePassthrough.assign(input=contextualize_chain) | answer_chain
-    )
-    
-    history = ChatMessageHistory()
-    conversational_chain = RunnableWithMessageHistory(
-        runnable=full_chain,
-        get_session_history=lambda session_id: history,
-        input_messages_key="input",
-        history_messages_key="chat_history",
-    )
-    
-    return conversational_chain
+# --- 4. MAIN CLASS (Đã bỏ Non-RAG & Fix History Sync) ---
 
 class SemanticRAGChatbot:
-    """Semantic Retrieval-based chatbot for student handbook and academic support with separate histories for RAG and non-RAG modes"""
+    """RAG-only Chatbot for student handbook"""
     
     def __init__(
         self,
@@ -307,12 +256,13 @@ class SemanticRAGChatbot:
     ):
         if cache_dir:
             os.makedirs(cache_dir, exist_ok=True)
-        self.force_rebuild = force_rebuild
-        self.mode = None  # Lưu chế độ: 'rag' hoặc 'non_rag'
-        self.rag_history = []  # Lịch sử cho chế độ RAG
-        self.non_rag_history = []  # Lịch sử cho chế độ non-RAG
+            
+        # Store quản lý lịch sử tập trung
+        self.history_store = {} 
+        self.default_session_id = "user_session"
+        self.history_store[self.default_session_id] = ChatMessageHistory()
 
-        # Load và xử lý tài liệu
+        # Load Document logic (như cũ)
         cache_exists = (
             cache_dir and 
             os.path.exists(os.path.join(cache_dir, 'faiss_index')) and 
@@ -321,12 +271,10 @@ class SemanticRAGChatbot:
         need_new_db = force_rebuild or not cache_exists
         
         if need_new_db:
-            print("Loading documents...")
+            print("Loading and processing documents...")
             self.documents = load_json_data(json_path)
-            print("Splitting documents...")
             self.documents = split_documents(self.documents)
             if cache_dir:
-                os.makedirs(cache_dir, exist_ok=True)
                 serializable_docs = [
                     {'page_content': doc.page_content, 'metadata': doc.metadata}
                     for doc in self.documents
@@ -335,27 +283,14 @@ class SemanticRAGChatbot:
                     json.dump(serializable_docs, f, ensure_ascii=False, indent=2)
         else:
             print("Loading processed documents from cache...")
-            try:
-                with open(os.path.join(cache_dir, 'processed_docs.json'), 'r', encoding='utf-8') as f:
-                    cached_docs = json.load(f)
-                self.documents = [
-                    Document(page_content=doc['page_content'], metadata=doc['metadata'])
-                    for doc in cached_docs
-                ]
-            except FileNotFoundError:
-                print("Cache file not found, rebuilding documents...")
-                self.documents = load_json_data(json_path)
-                self.documents = split_documents(self.documents)
-                if cache_dir:
-                    os.makedirs(cache_dir, exist_ok=True)
-                    serializable_docs = [
-                        {'page_content': doc.page_content, 'metadata': doc.metadata}
-                        for doc in self.documents
-                    ]
-                    with open(os.path.join(cache_dir, 'processed_docs.json'), 'w', encoding='utf-8') as f:
-                        json.dump(serializable_docs, f, ensure_ascii=False, indent=2)
+            with open(os.path.join(cache_dir, 'processed_docs.json'), 'r', encoding='utf-8') as f:
+                cached_docs = json.load(f)
+            self.documents = [
+                Document(page_content=doc['page_content'], metadata=doc['metadata'])
+                for doc in cached_docs
+            ]
         
-        print(f"Creating semantic vector retriever")
+        print(f"Creating semantic vector retriever...")
         self.retriever = create_vector_retriever(
             self.documents, 
             embedding_model_name,
@@ -366,95 +301,68 @@ class SemanticRAGChatbot:
         print(f"Loading LLM from {llm_path}")
         self.llm = load_llm(llm_path)
         
-        # Khởi tạo chuỗi cho student_handbook (RAG)
-        self.qa_chain = create_qa_chain(self.retriever, self.llm)
-        # Khởi tạo chuỗi cho academic_support (non-RAG)
-        self.academic_support_chain = create_academic_support_chain(self.llm)
+        # Khởi tạo chuỗi RAG duy nhất
+        self.qa_chain = create_qa_chain(self.retriever, self.llm, self.history_store)
         
-        print("Semantic RAG chatbot initialized successfully!")
+        print("Semantic RAG chatbot (Single Mode) initialized successfully!")
 
     def answer_question(self, query: str) -> Dict[str, Any]:
         query = query.strip()
         if not query:
-            return {"answer": "Bạn chưa nhập câu hỏi, hãy thử lại nhé!", "intent": "none"}
+            return {"answer": "Bạn chưa nhập câu hỏi.", "intent": "none"}
 
         start_time = time.time()
         full_answer = ""
-        sources = []
-
-        if self.mode == "rag":
+        
+        # Gọi Chain với session_id cố định
+        try:
             for chunk in self.qa_chain.stream(
                 {"input": query},
-                config={"configurable": {"session_id": "default"}}
+                config={"configurable": {"session_id": self.default_session_id}}
             ):
                 if isinstance(chunk, dict) and "answer" in chunk:
                     full_answer += chunk["answer"]
-                    # print(chunk["answer"], end="", flush=True)
-                else:
-                    continue
-            sources.append("Student Handbook")
-            intent = "student_handbook"
-            # Thêm vào lịch sử RAG
-            self.rag_history.append({"role": "user", "content": query})
-            self.rag_history.append({"role": "assistant", "content": full_answer})
-        else:  # non_rag
-            for chunk in self.academic_support_chain.stream(
-                {"input": query},
-                config={"configurable": {"session_id": "default"}}
-            ):
-                if hasattr(chunk, 'content') and chunk.content:
-                    full_answer += chunk.content
-                    # print(chunk.content, end="", flush=True)
-                elif isinstance(chunk, dict) and "content" in chunk and chunk["content"]:
-                    full_answer += chunk["content"]
-                    # print(chunk["content"], end="", flush=True)
-                elif isinstance(chunk, str) and chunk:
-                    full_answer += chunk
-                    # print(chunk, end="", flush=True)
-                else:
-                    continue
-            sources.append("LLM Internal Knowledge")
-            intent = "academic_support"
-            # Thêm vào lịch sử non-RAG
-            self.non_rag_history.append({"role": "user", "content": query})
-            self.non_rag_history.append({"role": "assistant", "content": full_answer})
+        except Exception as e:
+            return {"answer": f"Đã xảy ra lỗi: {str(e)}", "intent": "error"}
 
         end_time = time.time()
-        response_time = end_time - start_time
-        # print(f"\nThời gian trả lời: {response_time:.2f} giây")
+        # print(f"Response time: {end_time - start_time:.2f}s")
 
         return {
             "answer": full_answer.strip(),
-            "sources": sources,
-            "intent": intent
+            "sources": ["Student Handbook"],
+            "intent": "student_handbook"
         }
 
-    def save_conversation_history(self, rag_file_path: str, non_rag_file_path: str):
-        """Lưu lịch sử hội thoại riêng cho RAG và non-RAG"""
-        # Lưu lịch sử RAG
-        with open(rag_file_path, 'w', encoding='utf-8') as f:
-            json.dump(self.rag_history, f, ensure_ascii=False, indent=2)
-        print(f"RAG conversation history saved to {rag_file_path}")
+    def save_conversation_history(self, file_path: str):
+        """Lưu lịch sử RAG ra file JSON"""
+        history_obj = self.history_store[self.default_session_id]
+        messages_dict = [
+            {"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": m.content} 
+            for m in history_obj.messages
+        ]
         
-        # Lưu lịch sử non-RAG
-        with open(non_rag_file_path, 'w', encoding='utf-8') as f:
-            json.dump(self.non_rag_history, f, ensure_ascii=False, indent=2)
-        print(f"Non-RAG conversation history saved to {non_rag_file_path}")
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(messages_dict, f, ensure_ascii=False, indent=2)
+        print(f"Conversation history saved to {file_path}")
 
-    def load_conversation_history(self, rag_file_path: str, non_rag_file_path: str):
-        """Tải lịch sử hội thoại riêng cho RAG và non-RAG"""
-        # Tải lịch sử RAG
-        if os.path.exists(rag_file_path):
-            with open(rag_file_path, 'r', encoding='utf-8') as f:
-                self.rag_history = json.load(f)
-            print(f"RAG conversation history loaded from {rag_file_path}")
-        else:
-            print(f"No RAG conversation history found at {rag_file_path}")
+    def load_conversation_history(self, file_path: str):
+        """Load lịch sử từ JSON vào lại Memory của LangChain"""
+        if not os.path.exists(file_path):
+            print("History file not found.")
+            return
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
-        # Tải lịch sử non-RAG
-        if os.path.exists(non_rag_file_path):
-            with open(non_rag_file_path, 'r', encoding='utf-8') as f:
-                self.non_rag_history = json.load(f)
-            print(f"Non-RAG conversation history loaded from {non_rag_file_path}")
-        else:
-            print(f"No non-RAG conversation history found at {non_rag_file_path}")
+        # Xóa cũ và nạp mới
+        history_obj = self.history_store[self.default_session_id]
+        history_obj.clear()
+        
+        for msg in data:
+            if msg['role'] == 'user':
+                history_obj.add_message(HumanMessage(content=msg['content']))
+            else:
+                history_obj.add_message(AIMessage(content=msg['content']))
+        
+        print(f"Loaded {len(data)} messages into conversation history.")
