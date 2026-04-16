@@ -1,0 +1,28 @@
+# 1. Biến môi trường và Bảo mật (TUYỆT ĐỐI KHÔNG PUSH)
+.env
+.env.*
+
+# 2. Môi trường ảo Python (Virtual Environment)
+.venv/
+venv/
+env/
+ENV/
+
+# 3. Vector Database và Dữ liệu lớn
+# Tránh làm nặng repo, người khác pull về sẽ tự chạy ingest.py để tạo lại
+vectorstore/
+# data/  # (Bỏ dấu # ở đầu dòng này nếu tài liệu trong mục data là bảo mật và bạn không muốn push lên)
+
+# 4. Logs và Cache (Các file sinh ra trong quá trình chạy)
+build.log
+*.log
+__pycache__/
+*.py[cod]
+*$py.class
+.chainlit/
+.claude/
+.pytest_cache/
+
+# 5. Các file của Hệ điều hành (MacOS/Windows sinh ra rác)
+.DS_Store
+Thumbs.db
